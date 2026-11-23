@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Model Checkpoints & Large Weights
+llm/checkpoints/*.pt
+llm/checkpoints/*.pth
+llm/checkpoints/*.bin
+*.pt
+*.pth
+*.bin
+
+# Heavy Raw Match Datasets & Multi-Sport Logs
+llm/raw_datasets/tests_json/
+llm/raw_datasets/odis_json/
+llm/raw_datasets/t20s_json/
+llm/raw_datasets/ipl_json/
+llm/raw_datasets/*.jsonl
+llm/raw_datasets/*.parquet
+
+# Exports & Temporary Outputs
+exports/
+*.log
+.pytest_cache/
+
+# IDE / OS
+.vscode/
+.idea/
+*.suo
+*.user
+.DS_Store
+Thumbs.db
+
+# Secrets / env
+.env
+*.key

@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>3D Cricket Fielding & Bowling Simulation Game</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #050b14;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            user-select: none;
+        }
+        #application-canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+    </style>
+    <!-- PlayCanvas Engine CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/playcanvas@2.5.0/build/playcanvas.min.js"></script>
+</head>
+<body>
+    <canvas id="application-canvas"></canvas>
+
+    <script>
+        // -------------------------------------------------------------
+        // STEP 1: INITIALIZE PLAYCANVAS APPLICATION
+        // -------------------------------------------------------------
+        var canvas = document.getElementById('application-canvas');
+        var app = new pc.Application(canvas, {
+            mouse: new pc.Mouse(canvas),
+            touch: new pc.TouchDevice(canvas),
+            keyboard: new pc.Keyboard(window),
+            graphicsDeviceOptions: { antialias: true, alpha: false }
+        });
+
+        app.setCanvasFillMode(pc.FILLMODE_FILL_WINDOW);
+        app.setCanvasResolution(pc.RESOLUTION_AUTO);
+
+        window.addEventListener('resize', function () {
+            app.resizeCanvas();
+        });
+
+        // Ambient Lighting for Stadium
+        app.scene.ambientColor = new pc.Color(0.38, 0.45, 0.55);
+
+        // 1. Stadium Grass Outfield (Radius 70m)
+        var ground = new pc.Entity("Outfield_Turf");
+        ground.addComponent('model', { type: 'cylinder' });
+        ground.setLocalScale(140, 0.1, 140);
+        ground.setPosition(0, -0.05, 0);
+
+        var grassMat = new pc.StandardMaterial();
+        grassMat.diffuse = new pc.Color(0.12, 0.38, 0.18); // Emerald turf green
+        grassMat.gloss = 0.25;
+        grassMat.update();
+        ground.model.material = grassMat;
+        app.root.addChild(ground);
+
+        // 2. Stadium Floodlights
+        var mainLight = new pc.Entity("Stadium_KeyLight");
+        mainLight.addComponent('light', {
+            type: "directional",
+            color: new pc.Color(1.0, 0.98, 0.95),
+            intensity: 1.6,
+            castShadows: true,
+            shadowBias: 0.05,
+            shadowDistance: 130
+        });
+        mainLight.setEulerAngles(45, 40, 0);
+        app.root.addChild(mainLight);
+
+        var fillLight = new pc.Entity("Stadium_FillLight");
+        fillLight.addComponent('light', {
+            type: "directional",
+            color: new pc.Color(0.4, 0.6, 0.8),
+            intensity: 0.6
+        });
+        fillLight.setEulerAngles(-30, -140, 0);
+        app.root.addChild(fillLight);
+
+        // 3. Orbit Camera
+        var camera = new pc.Entity("MainCamera");
+        camera.addComponent('camera', {
+            clearColor: new pc.Color(0.04, 0.07, 0.12),
+            farClip: 500,
+            fov: 46
+        });
+        app.root.addChild(camera);
+
+        // Orbit camera controls
+        var isOrbiting = false;
+        var prevX = 0, prevY = 0;
+        var camPitch = 38, camYaw = 180, camDist = 92;
+        var targetFocus = new pc.Vec3(0, 1.0, 8.0);
+
+        function updateCamera() {
+            var radYaw = camYaw * Math.PI / 180;
+            var radPitch = camPitch * Math.PI / 180;
+            var cx = targetFocus.x + camDist * Math.cos(radPitch) * Math.sin(radYaw);
+            var cy = targetFocus.y + camDist * Math.sin(radPitch);
+            var cz = targetFocus.z + camDist * Math.cos(radPitch) * Math.cos(radYaw);
+            camera.setPosition(cx, cy, cz);
+            camera.lookAt(targetFocus);
+        }
+        updateCamera();
+
+        window.addEventListener('mousedown', function (e) {
+            if (e.target.tagName !== 'CANVAS') return;
+            // Left-click on turf, middle click, or right click all orbit smoothly
+            // (Fielder dragging stops propagation during capture phase, so fielder clicks won't trigger orbit)
+            if (e.button === 0 || e.button === 1 || e.button === 2) {
+                isOrbiting = true;
+                prevX = e.clientX;
+                prevY = e.clientY;
+            }
+        });
+        window.addEventListener('mouseup', function () { isOrbiting = false; });
+        window.addEventListener('mousemove', function (e) {
+            if (!isOrbiting) return;
+            var dx = e.clientX - prevX;
+            var dy = e.clientY - prevY;
+            prevX = e.clientX;
+            prevY = e.clientY;
+            camYaw -= dx * 0.4;
+            camPitch = Math.max(10, Math.min(85, camPitch + dy * 0.3));
+            updateCamera();
+        });
+        window.addEventListener('wheel', function (e) {
+            camDist = Math.max(18, Math.min(160, camDist + e.deltaY * 0.08));
+            updateCamera();
+        });
+
+        // Touch orbit support for mobile/touch screens
+        window.addEventListener('touchstart', function (e) {
+            if (e.target.tagName !== 'CANVAS' || e.touches.length !== 1) return;
+            isOrbiting = true;
+            prevX = e.touches[0].clientX;
+            prevY = e.touches[0].clientY;
+        }, { passive: true });
+        window.addEventListener('touchmove', function (e) {
+            if (!isOrbiting || e.touches.length !== 1) return;
+            var dx = e.touches[0].clientX - prevX;
+            var dy = e.touches[0].clientY - prevY;
+            prevX = e.touches[0].clientX;
+            prevY = e.touches[0].clientY;
+            camYaw -= dx * 0.4;
+            camPitch = Math.max(10, Math.min(85, camPitch + dy * 0.3));
+            updateCamera();
+        }, { passive: true });
+        window.addEventListener('touchend', function () { isOrbiting = false; });
+
+        // Prevent context menu so right-click can orbit easily
+        window.addEventListener('contextmenu', function(e) {
+            if (e.target.tagName === 'CANVAS') e.preventDefault();
+        });
+
+        // Camera Preset System
+        var cameraPresets = {
+            'broadcast': { pitch: 38, yaw: 180, dist: 92, focusY: 1.0, focusZ: 8.0 },
+            'bowler':   { pitch: 10, yaw: 180, dist: 30, focusY: 1.8, focusZ: 10.0 },
+            'batsman':  { pitch: 12, yaw: 0,   dist: 24, focusY: 1.5, focusZ: 1.0 }
+        };
+
+        var camAnimating = false;
+        var camAnimStart = {};
+        var camAnimEnd = {};
+        var camAnimProgress = 0;
+
+        app.on('cricket:cameraPreset', function (presetName) {
+            var preset = cameraPresets[presetName];
+            if (!preset) return;
+
+            camAnimStart = { pitch: camPitch, yaw: camYaw, dist: camDist, fy: targetFocus.y, fz: targetFocus.z };
+            camAnimEnd = { pitch: preset.pitch, yaw: preset.yaw, dist: preset.dist, fy: preset.focusY, fz: preset.focusZ };
+            camAnimProgress = 0;
+            camAnimating = true;
+        });
+
+        app.on('update', function (dt) {
+            if (!camAnimating) return;
+            camAnimProgress += dt * 2.2;
+            if (camAnimProgress >= 1.0) {
+                camAnimProgress = 1.0;
+                camAnimating = false;
+            }
+            var t = 1.0 - Math.pow(1.0 - camAnimProgress, 3); // Ease-out cubic
+            camPitch = camAnimStart.pitch + (camAnimEnd.pitch - camAnimStart.pitch) * t;
+            camYaw = camAnimStart.yaw + (camAnimEnd.yaw - camAnimStart.yaw) * t;
+            camDist = camAnimStart.dist + (camAnimEnd.dist - camAnimStart.dist) * t;
+            targetFocus.y = camAnimStart.fy + (camAnimEnd.fy - camAnimStart.fy) * t;
+            targetFocus.z = camAnimStart.fz + (camAnimEnd.fz - camAnimStart.fz) * t;
+            updateCamera();
+        });
+    </script>
+
+    <!-- ------------------------------------------------------------- -->
+    <!-- STEP 2: LOAD GAMEPLAY CLIENT SCRIPTS                          -->
+    <!-- ------------------------------------------------------------- -->
+    <script src="playcanvas_scripts/CricketAudio.js"></script>
+    <script src="playcanvas_scripts/CricketGame.js"></script>
+    <script src="playcanvas_scripts/GameHUD.js"></script>
+
+    <script>
+        // -------------------------------------------------------------
+        // STEP 3: ATTACH SCRIPTS TO GAME MANAGER ENTITY & START APP
+        // -------------------------------------------------------------
+        var gameManager = new pc.Entity("GameManager");
+        app.root.addChild(gameManager);
+        gameManager.addComponent('script');
+
+        try {
+            gameManager.script.create('cricketAudio');
+            console.log("Attached cricketAudio script successfully.");
+        } catch (e) {
+            console.error("Error creating cricketAudio:", e);
+        }
+
+        try {
+            gameManager.script.create('cricketGame');
+            console.log("Attached cricketGame script successfully.");
+        } catch (e) {
+            console.error("Error creating cricketGame:", e);
+        }
+
+        try {
+            gameManager.script.create('gameHUD');
+            console.log("Attached gameHUD script successfully.");
+        } catch (e) {
+            console.error("Error creating gameHUD:", e);
+        }
+
+        // Global bridge for level click
+        window.app = app;
+        app.on('cricket:startLevel', function(lvlId) {
+            if (gameManager.script && gameManager.script.cricketGame) {
+                gameManager.script.cricketGame.startAcademyLevel(lvlId);
+            }
+            var modal = document.getElementById('academy-modal');
+            if (modal) modal.style.display = 'none';
+        });
+
+        // Start PlayCanvas Application Loop
+        app.start();
+        console.log("3D Cricket Simulation Game is running.");
+    </script>
+</body>
+</html>
